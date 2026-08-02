@@ -3,16 +3,19 @@
 No-GPU counterpart to
 [`Planar_PIV_GPU`](https://github.com/SPC3MN/Planar_PIV_GPU): reads raw
 LaVision/DaVis `.im7` image pairs directly and runs them through plain
-[`openpiv-python`](https://github.com/OpenPIV/openpiv-python)'s basic
-single-pass `pyprocess.extended_search_area_piv` (instead of `piv_gpu`) to
-produce a 2-component (u, v) planar velocity field per pair. No CUDA, no
-GPU, nothing beyond a normal Python + pip install. Same config-file-driven
+[`openpiv-python`](https://github.com/OpenPIV/openpiv-python)'s own
+multi-pass, window-deformation pipeline (`openpiv.windef`, the same
+coarse-to-fine multi-pass + validation + outlier-replacement +
+optional-smoothing approach as `piv_gpu`) instead of `piv_gpu`, to produce
+a 2-component (u, v) planar velocity field per pair. No CUDA, no GPU,
+nothing beyond a normal Python + pip install. Same config-file-driven
 format as the rest of this pipeline family.
 
-This is deliberately the **basic** openpiv-python API -- a single
-interrogation pass, no window deformation / multi-pass refinement -- so
-treat it as a no-GPU fallback or a CPU cross-check, not a
-feature-for-feature replacement for the GPU pipeline's accuracy.
+Treat it as a no-GPU fallback or a CPU cross-check against
+`Planar_PIV_GPU`, not a byte-for-byte replacement -- it's the same
+multi-pass *idea*, but two different implementations of it
+(`openpiv-python` vs. `openpiv-python-gpu`), so exact numeric agreement
+isn't guaranteed.
 
 ## What it does
 
@@ -30,11 +33,13 @@ feature-for-feature replacement for the GPU pipeline's accuracy.
   plotted, and opened for review -- the run pauses on a terminal `y/N`
   prompt before processing the rest of that set. Skipped entirely in
   folder-of-sets batch mode and in `"loose"` mode.
-- Runs `openpiv-python`'s `extended_search_area_piv` once per run (the
-  same engine instance is reused across every pair in a set), with
-  outlier rejection, invalid-vector interpolation, and smoothing as
-  optional post-processing steps, using `sig2noise_val` for vector
-  validation
+- Runs `openpiv-python`'s multi-pass pipeline once per run (the same
+  engine instance is reused across every pair in a set) -- coarse-to-fine
+  window sizes with image deformation between passes, per-pass
+  sig2noise/global/median validation, iterative outlier replacement, and
+  optional `smoothn` smoothing (all via `openpiv.settings.PIVSettings`) --
+  then the same outer post-processing options as the GPU pipeline
+  (outlier rejection, invalid vector interpolation, smoothing) run on top
 - Saves results per pair as `.npz` (and optionally a quiver plot), plus an
   optional CSV summary across the batch
 
@@ -87,7 +92,7 @@ include the keys you're actually changing in the file.
 | `input_path` | `.im7` source -- a single `.set` file/set folder, a folder containing multiple `*.set` entries, or a plain folder (`"loose"` mode) |
 | `suffix_a` / `suffix_b` | (`"loose"` mode only) filename suffixes used to pair frame A/B when they aren't combined into one file |
 | `loose_glob` | (`"loose"` mode only) glob pattern used to find files in `input_path` |
-| `cpu_settings` | Forwarded to `openpiv-python`'s `extended_search_area_piv` -- `window_size`, `search_area_size`, `overlap_ratio`, `dt`, `sig2noise_method`, `sig2noise_threshold`, `subpixel_method`. Unrecognized keys are warned about, not silently dropped. |
+| `cpu_settings` | Keys are `openpiv.settings.PIVSettings` field names -- `windowsizes`/`overlap` (one entry per pass; overlap in **pixels**, not a ratio), `dt`, `sig2noise_method`/`sig2noise_threshold`/`sig2noise_validate`, `validation_first_pass`, `replace_vectors`, `filter_method`/`max_filter_iteration`/`filter_kernel_size`, `smoothn`/`smoothn_p`, `deformation_method`, `interpolation_order`, and more (see `PIVSettings`). Default: one pass at 64px/50% overlap, then three passes at 32px/75% overlap. Unrecognized keys are warned about, not silently dropped. |
 | `global_outlier_std` | Reject vectors more than N standard deviations from the mean (`None` disables) |
 | `replace_invalid` | Interpolate over invalid/NaN vectors |
 | `smooth_field` / `smooth_sigma` | Gaussian-smooth the field |
